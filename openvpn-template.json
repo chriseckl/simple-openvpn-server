@@ -34,6 +34,7 @@
     "storageAccountType": "Standard_LRS",
     "publicIPAddressName": "openvpnPublicIP",
     "publicIPAddressType": "Static",
+    "nsgname":"openvpnnsg",
     "vmStorageAccountContainerName": "vhds",
     "vmName": "openvpnVM",
     "vmSize": "Standard_B1ls",
@@ -86,6 +87,55 @@
       }
     },
     {
+		"name": "[variables('nsgname')]",
+		"type": "Microsoft.Network/networkSecurityGroups",
+		"apiVersion": "2016-09-01",
+		"location": "[resourceGroup().location]",
+		"properties": {
+        "securityRules": [
+          {
+            "name": "default-allow-ssh",
+            "properties": {
+              "priority": 1000,
+              "sourceAddressPrefix": "*",
+              "protocol": "TCP",
+              "destinationPortRange": "22",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "default-allow-openvpn",
+            "properties": {
+              "priority": 1100,
+              "sourceAddressPrefix": "*",
+              "protocol": "UDP",
+              "destinationPortRange": "1194",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          },
+          {
+            "name": "default-allow-https",
+            "properties": {
+              "priority": 1200,
+              "sourceAddressPrefix": "*",
+              "protocol": "UDP",
+              "destinationPortRange": "443",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*"
+            }
+          }
+        ]
+      }
+	  },
+    {
       "apiVersion": "[variables('apiVersion')]",
       "type": "Microsoft.Network/networkInterfaces",
       "name": "[variables('nicName')]",
@@ -93,78 +143,33 @@
       "dependsOn": [
         "[concat('Microsoft.Network/publicIPAddresses/', variables('publicIPAddressName'))]",
         "[concat('Microsoft.Network/virtualNetworks/', variables('virtualNetworkName'))]",
-		"[concat('Microsoft.Network/networkSecurityGroups/', 'openvpn-nsg')]"
+    		"[concat('Microsoft.Network/networkSecurityGroups/',  variables('nsgname'))]"
       ],
       "properties": {
         "ipConfigurations": [
-          {
-            "name": "ipconfig1",
-            "properties": {
-              "privateIPAllocationMethod": "Static",
-              "publicIPAddress": {
-                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('publicIPAddressName'))]"
-              },
-              "subnet": {
-                "id": "[variables('subnetRef')]"
+            {
+              "name": "ipconfig1",
+              "properties": {
+                "privateIPAllocationMethod": "Dynamic",
+                "publicIPAddress": {
+                  "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('publicIPAddressName'))]"
+                },
+                "subnet": {
+                  "id": "[variables('subnetRef')]"
+                }
               }
             }
+          ],
+        "networkSecurityGroup": {
+            "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgname'))]"
           }
-        ]
       }
     },
-	{
-		"name": "['openvpn-nsg']",
-		"type": "Microsoft.Network/networkSecurityGroups",
-		"apiVersion": "2016-09-01",
-		"location": "[resourceGroup().location]",
-		"properties": {
-			"securityRules": [
-				{
-					"name": "default-allow-ssh",
-					"properties": {
-						"priority": 1000,
-						"sourceAddressPrefix": "*",
-						"protocol": "TCP",
-						"destinationPortRange": "22",
-						"access": "Allow",
-						"direction": "Inbound",
-						"sourcePortRange": "*",
-						"destinationAddressPrefix": "*"
-					}
-				},
-				{
-					"name": "default-allow-openvpn",
-					"properties": {
-						"priority": 1100,
-						"sourceAddressPrefix": "*",
-						"protocol": "UDP",
-						"destinationPortRange": "1194",
-						"access": "Allow",
-						"direction": "Inbound",
-						"sourcePortRange": "*",
-						"destinationAddressPrefix": "*"
-					}
-				},
-				{
-					"name": "default-allow-https",
-					"properties": {
-						"priority": 1200,
-						"sourceAddressPrefix": "*",
-						"protocol": "UDP",
-						"destinationPortRange": "443",
-						"access": "Allow",
-						"direction": "Inbound",
-						"sourcePortRange": "*",
-						"destinationAddressPrefix": "*"
-					}
-				}
-			]
-		}
-	},
+
 	{
 		"type": "Microsoft.Compute/virtualMachines/extensions",
 		"name": "[concat(variables('vmName'),'/', 'openvpn-setup')]",
-		"apiVersion": "['2015-06-15']",
+		"apiVersion": "2015-06-15",
 		"location": "[resourceGroup().location]",
 		"dependsOn": [
 			"[concat('Microsoft.Compute/virtualMachines/', variables('vmName'))]"
@@ -206,7 +211,10 @@
             "version": "latest"
           },
           "osDisk": {
-            "createOption": "FromImage"
+            "createOption": "FromImage",
+            "managedDisk": {
+                 "storageAccountType": "[variables('storageAccountType')]"
+            }
           }
         },
         "networkProfile": {
